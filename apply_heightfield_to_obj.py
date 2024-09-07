@@ -45,6 +45,8 @@ def save_obj(filename, vertices, faces):
         for v in vertices:
             f.write(f"v {v[0]} {v[1]} {v[2]}\n")
         for face in faces:
+            if len(face) < 4:
+                continue
             f.write(f"f {face[0]+1} {face[1]+1} {face[2]+1} {face[3]+1}\n")
 
 def calculate_face_normal(v0, v1, v2):
@@ -73,7 +75,30 @@ def calculate_face_normal(v0, v1, v2):
     
     return normal
 
-def apply_heightfield_to_obj(obj_path, heightmap_path, output_path, displacement_scale=1.0):
+def scale_uvs_to_fit(uvs):
+    """
+    Scales the UV coordinates to fit within the [0, 1] range.
+    
+    Parameters:
+    - uvs (list of tuples): The list of UV coordinates.
+    
+    Returns:
+    - scaled_uvs (list of tuples): The scaled UV coordinates.
+    """
+    # Get the min and max UV values
+    u_min, v_min = np.min(uvs, axis=0)
+    u_max, v_max = np.max(uvs, axis=0)
+
+    # Scale the UV coordinates
+    u_range = u_max - u_min
+    v_range = v_max - v_min
+
+    # Apply scaling and translation to fit within [0, 1]
+    scaled_uvs = [( (u - u_min) / u_range, (v - v_min) / v_range) for u, v in uvs]
+    
+    return scaled_uvs
+
+def apply_heightfield_to_obj(obj_path, heightmap_path, output_path, displacement_scale=1.0, scale_uv_map=False):
     """
     Applies a heightmap to an OBJ model by displacing its vertices based on their UV coordinates and the face normals.
 
@@ -82,16 +107,22 @@ def apply_heightfield_to_obj(obj_path, heightmap_path, output_path, displacement
     - heightmap_path (str): The path to the heightmap image.
     - output_path (str): The path to the output OBJ file.
     - displacement_scale (float): Scale factor for the heightfield displacement.
+    - scale_uv_map (bool): Whether to scale the UV coordinates to fit within the [0, 1] range.
     """
     # Step 1: Load the OBJ file (vertices, faces, and UVs)
     vertices, faces, uvs = load_obj(obj_path)
 
-    # Step 2: Load the heightmap image and normalize it to [0, 1]
+    # Step 2: Optionally scale the UVs to fit within the [0, 1] range
+    if scale_uv_map:
+        uvs = scale_uvs_to_fit(uvs)
+        print("UV map scaled to fit within [0, 1] range")
+
+    # Step 3: Load the heightmap image and normalize it to [0, 1]
     heightmap = Image.open(heightmap_path).convert('L')
     heightmap_array = np.array(heightmap) / 255.0  # Normalize pixel values between 0 and 1
     h_map, w_map = heightmap_array.shape
 
-    # Step 3: Displace the vertices using the heightmap and face normals
+    # Step 4: Displace the vertices using the heightmap and face normals
     displaced_vertices = np.array(vertices)
     for face in faces:
         # Get the three vertices of the face
@@ -113,17 +144,18 @@ def apply_heightfield_to_obj(obj_path, heightmap_path, output_path, displacement
 
             height_value = heightmap_array[v_idx, u_idx]  # Get heightmap value
 
-            # Step 4: Displace the vertex in the direction of the face normal
+            # Step 5: Displace the vertex in the direction of the face normal
             displacement = normal * height_value * displacement_scale
             displaced_vertices[i] = displaced_vertices[i] + displacement
 
-    # Step 5: Save the displaced OBJ file
+    # Step 6: Save the displaced OBJ file
     save_obj(output_path, displaced_vertices, faces)
 
     print(f"Displaced mesh saved to {output_path}")
 
 if __name__ == "__main__":
-    obj_path = '/Users/maxine/Desktop/cube.obj'  # The 3D object you want to displace
+    obj_path = '/Users/maxine/Desktop/monkey.obj'  # The 3D object you want to displace
     heightmap_path = '/Users/maxine/Downloads/1_casino_navy_stitched.jpg'  # The path to the heightmap image
     output_path = 'output.obj'  # The path to save the displaced OBJ file
-    apply_heightfield_to_obj(obj_path, heightmap_path, output_path, displacement_scale=0.01)
+    apply_heightfield_to_obj(obj_path, heightmap_path, output_path, displacement_scale=0.01, scale_uv_map=True)
+ 
